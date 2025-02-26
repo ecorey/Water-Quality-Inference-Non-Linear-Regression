@@ -1,4 +1,17 @@
-# Add a function to predict for a specific test year using data up to a cutoff
+import torch
+from torch import nn
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+import time
+
+
+
+###################
+#### FUNCTIONS ####
+###################
+
+# function to predict for a specific test year using data up to a cutoff
 def predict_custom_year_range(data, train_up_to_year, predict_for_year):
     """
     Helper function to make predictions for a specific test year
@@ -37,7 +50,8 @@ def predict_custom_year_range(data, train_up_to_year, predict_for_year):
     
     return results
 
-# Add a simpler alternative that uses linear regression instead of neural networks
+
+
 def process_all_stations_linear(data, feature_cols=['GM', 'SDV', 'MAX_', 'Count_', 'MFCount', 'Year'], 
                                train_up_to_year=None, predict_for_year=None):
     """
@@ -184,75 +198,9 @@ def process_all_stations_linear(data, feature_cols=['GM', 'SDV', 'MAX_', 'Count_
     results_df = pd.DataFrame(predictions)
     return results_df
 
-# Add timing import
-import torch
-from torch import nn
-import pandas as pd
-import numpy as np
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-import time
-import os
 
-# File paths
-file_list = [
-    './data/2013_P90_Scores.csv', 
-    './data/2014_P90_Scores.csv', 
-    './data/2015_P90_Scores.csv', 
-    './data/2016_P90_Scores.csv', 
-    './data/2017_P90_Scores.csv', 
-    './data/2018_P90_Scores.csv', 
-    './data/2019_P90_Scores.csv', 
-    './data/2020_P90_Scores.csv', 
-    './data/2021_P90_Scores.csv', 
-    './data/2022_P90_Scores.csv'
-]
 
-# Columns to keep for geographical info - remove these from drop_columns
-geo_columns = ['Lat_DD', 'Long_DD']
-
-# Columns to drop (except geographical info)
-drop_columns = ['X', 'Y', 'x', 'y', 'GlobalID', 'OBJECTID', 'Class', 'Appd_Std', 
-                'Restr_Std', 'Min_Date', 'Grow_Area']
-
-# Load and combine all datasets
-dataframes = []
-for file in file_list:
-    try:
-        year = int(file.split('_')[0].split('/')[-1])
-        df = pd.read_csv(file)
-        
-        # Replace any infinite values with NaN
-        df = df.replace([np.inf, -np.inf], np.nan)
-        
-        # Add year column
-        df['Year'] = year
-        dataframes.append(df)
-    except Exception as e:
-        print(f"Could not load {file}: {e}")
-
-# Combine all data
-all_data = pd.concat(dataframes, ignore_index=True)
-
-# Fill NaN values for specific columns
-numeric_cols = ['GM', 'SDV', 'MAX_', 'Count_', 'MFCount', 'P90']
-for col in numeric_cols:
-    if col in all_data.columns:
-        all_data[col] = all_data[col].fillna(all_data[col].median())
-
-# Define neural network model - simplified
-class StationP90Model(nn.Module):
-    def __init__(self, input_size):
-        super().__init__()
-        self.network = nn.Sequential(
-            nn.Linear(input_size, 16),
-            nn.ReLU(),
-            nn.Linear(16, 1)
-        )
-
-    def forward(self, x):
-        return self.network(x)
-
-# Create a function to train a model for a specific station
+# function to train a model for a specific station
 def train_station_model(station_data, feature_cols, target_col='P90', epochs=20):
     # Prepare data
     X = station_data[feature_cols].values
@@ -283,7 +231,9 @@ def train_station_model(station_data, feature_cols, target_col='P90', epochs=20)
     
     return model, scaler
 
-# Prepare prediction function
+
+
+# function for prediction 
 def predict_next_year(model, scaler, latest_data, feature_cols):
     # Scale the input features
     X = latest_data[feature_cols].values.reshape(1, -1)
@@ -299,7 +249,9 @@ def predict_next_year(model, scaler, latest_data, feature_cols):
     
     return max(0, prediction)  # Ensure non-negative P90
 
-# Process all stations with batching
+
+
+# function to process all stations with batching
 def process_all_stations(data, feature_cols=['GM', 'SDV', 'MAX_', 'Count_', 'MFCount', 'Year'], 
                           batch_size=100):
     # Drop unnecessary columns
@@ -362,21 +314,103 @@ def process_all_stations(data, feature_cols=['GM', 'SDV', 'MAX_', 'Count_', 'MFC
     results_df = pd.DataFrame(predictions)
     return results_df
 
+
+
+
+###################
+####### DATA ######
+###################
+
+# File paths
+file_list = [
+    './data/2013_P90_Scores.csv', 
+    './data/2014_P90_Scores.csv', 
+    './data/2015_P90_Scores.csv', 
+    './data/2016_P90_Scores.csv', 
+    './data/2017_P90_Scores.csv', 
+    './data/2018_P90_Scores.csv', 
+    './data/2019_P90_Scores.csv', 
+    './data/2020_P90_Scores.csv', 
+    './data/2021_P90_Scores.csv', 
+    './data/2022_P90_Scores.csv'
+]
+
+
+# columns to keep 
+geo_columns = ['Lat_DD', 'Long_DD']
+
+
+# columns to drop
+drop_columns = ['X', 'Y', 'x', 'y', 'GlobalID', 'OBJECTID', 'Class', 'Appd_Std', 
+                'Restr_Std', 'Min_Date', 'Grow_Area']
+
+
+# load and combine all datasets
+dataframes = []
+for file in file_list:
+    try:
+        year = int(file.split('_')[0].split('/')[-1])
+        df = pd.read_csv(file)
+        
+        # replace any infinite values with NaN
+        df = df.replace([np.inf, -np.inf], np.nan)
+        
+        # add year column
+        df['Year'] = year
+        dataframes.append(df)
+    except Exception as e:
+        print(f"Could not load {file}: {e}")
+
+
+# combine all data
+all_data = pd.concat(dataframes, ignore_index=True)
+
+
+# fill NaN values for specific columns
+numeric_cols = ['GM', 'SDV', 'MAX_', 'Count_', 'MFCount', 'P90']
+for col in numeric_cols:
+    if col in all_data.columns:
+        all_data[col] = all_data[col].fillna(all_data[col].median())
+
+
+
+
+
+###################
+###### MODEL ######
+###################
+
+class StationP90Model(nn.Module):
+    def __init__(self, input_size):
+        super().__init__()
+        self.network = nn.Sequential(
+            nn.Linear(input_size, 16),
+            nn.ReLU(),
+            nn.Linear(16, 1)
+        )
+
+    def forward(self, x):
+        return self.network(x)
+    
+
+
+    
+###################
+###### MAIN #######
+###################
+
 # Main execution
 if __name__ == "__main__":
+
     # Start timing
     start_time = time.time()
     
-    # Option 1: Predict for 2023 using all available data through 2022
-    results = predict_custom_year_range(all_data, 2022, 2023)
+
+    #  prediction
+    results = predict_custom_year_range(all_data, 2020, 2021)
     
-    # Option 2: You can also predict for past years to validate the model
-    # For example, predict 2022 using data through 2021
-    # results_2022 = predict_custom_year_range(all_data, 2021, 2022)
     
-    # Option 3: Predict 2021 using data through 2020
-    # results_2021 = predict_custom_year_range(all_data, 2020, 2021)
     
-    # Report overall time
+    # report overall time
     elapsed_time = time.time() - start_time
     print(f"\nAll processing completed in {elapsed_time:.2f} seconds")
