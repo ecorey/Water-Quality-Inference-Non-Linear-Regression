@@ -266,16 +266,16 @@ if __name__ == "__main__":
     
     # Process data
     train_data, stations, station_coords = process_data(all_data, 
-                                                        train_up_to_year=2020, 
-                                                        predict_for_year=2021)
+                                                        train_up_to_year=2022, 
+                                                        predict_for_year=2023)
     
 
     # Train models and make predictions
     results = train_and_predict(train_data, 
                                 stations, 
                                 station_coords, 
-                                train_up_to_year=2020, 
-                                predict_for_year=2021)
+                                train_up_to_year=2022, 
+                                predict_for_year=2023)
     
 
     # Report overall time
