@@ -102,7 +102,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
             # Create the model
             model = StationP90Model(len(feature_cols))
             criterion = nn.MSELoss()
-            optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+            optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
             
             # Training loop
             epochs = 50
