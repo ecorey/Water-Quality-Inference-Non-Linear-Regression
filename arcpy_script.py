@@ -36,4 +36,15 @@ arcpy.management.CalculateField(spatial_join_output,
                                 "!P90! - !Predicted_P90!", 
                                 "PYTHON3")
 
+# 4. Select and Count Stations with P90_DIFF > +8 or < -8
+print("Selecting P90_DIFF outside of ±8...")
+selection_query = f"{field_name} > 8 OR {field_name} < -8"
+arcpy.management.SelectLayerByAttribute(spatial_join_output, 
+                                        "NEW_SELECTION", 
+                                        selection_query)
+
+# Count the selected stations
+selected_count = int(arcpy.management.GetCount(spatial_join_output)[0])
+print(f"Number of stations with P90_DIFF > +8 or < -8: {selected_count}")
+
 print("Process Completed Successfully!")
