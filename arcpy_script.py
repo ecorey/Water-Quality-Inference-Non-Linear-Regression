@@ -7,6 +7,7 @@ csv_file = r"C:\Users\bengs\Downloads\P90\p90_predictions_2023_using_data_throug
 output_fc = "P90_Prediction_Points_From_CSV"                 # Name of the new feature class
 spatial_join_fc = "Spatial_Join_Actual_and_Prediction"        # Name of the spatial join output
 target_fc = os.path.join(project_gdb, "c2023_P90_Scores_XYTableToPoint")  # Target feature class for spatial join
+output_csv = r"C:\Users\bengs\Downloads\P90\Selected_P90_Diff.csv"  # Path to save the output CSV
 
 # Set environment
 arcpy.env.overwriteOutput = True
@@ -39,12 +40,20 @@ arcpy.management.CalculateField(spatial_join_output,
 # 4. Select and Count Stations with P90_DIFF > +8 or < -8
 print("Selecting P90_DIFF outside of ±8...")
 selection_query = f"{field_name} > 8 OR {field_name} < -8"
-arcpy.management.SelectLayerByAttribute(spatial_join_output, 
+arcpy.management.MakeFeatureLayer(spatial_join_output, "Selected_Layer")
+arcpy.management.SelectLayerByAttribute("Selected_Layer", 
                                         "NEW_SELECTION", 
                                         selection_query)
 
 # Count the selected stations
-selected_count = int(arcpy.management.GetCount(spatial_join_output)[0])
+selected_count = int(arcpy.management.GetCount("Selected_Layer")[0])
 print(f"Number of stations with P90_DIFF > +8 or < -8: {selected_count}")
 
+# 5. Export the selected points to a CSV file
+print("Exporting selected points to CSV...")
+arcpy.conversion.TableToTable("Selected_Layer", 
+                              os.path.dirname(output_csv), 
+                              os.path.basename(output_csv))
+
+print(f"Selected points exported to: {output_csv}")
 print("Process Completed Successfully!")
