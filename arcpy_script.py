@@ -1,3 +1,17 @@
+"""
+The goal of this script is to identify stations with significant differences between actual and predicted P90 values.
+
+Workflow overview:
+1. Reads a .csv file containing P90 predictions and modifies it.
+2. Creates a table view from the .csv file.
+3. Converts the table view to a point feature class.
+4. Performs a spatial join between the actual and predicted P90 values.
+5. Calculates the difference between actual and predicted P90 values.
+6. Selects stations with significant differences and creates a new feature class.
+7. Exports the selected stations to a new .csv file.
+8. Confirms the completion of the process.
+"""
+
 import arcpy
 import os
 import pandas as pd
