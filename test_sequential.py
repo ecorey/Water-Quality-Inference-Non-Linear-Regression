@@ -1,3 +1,6 @@
+# currently around 11% inaccuracy or 89% accuracy
+# 2020 predictions using data through 2019
+
 import torch
 from torch import nn
 import pandas as pd
