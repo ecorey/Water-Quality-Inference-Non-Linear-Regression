@@ -1,5 +1,6 @@
-# currently around 11% inaccuracy or 89% accuracy
-# 2020 predictions using data through 2019
+"""
+This script is used to test the sequential model for predicting P90 scores for a given year using data through the given year.
+"""
 
 import torch
 from torch import nn
@@ -400,7 +401,7 @@ class StationP90Model(nn.Module):
 ####### DATA ######
 ###################
 
-# File paths
+# file paths
 file_list = [
     './data/2013_P90_Scores.csv', 
     './data/2014_P90_Scores.csv', 
@@ -413,11 +414,14 @@ file_list = [
     './data/2021_P90_Scores.csv', 
     './data/2022_P90_Scores.csv'
 ]
+
 # columns to keep 
 geo_columns = ['Lat_DD', 'Long_DD']
+
 # columns to drop
 drop_columns = ['X', 'Y', 'x', 'y', 'GlobalID', 'OBJECTID', 'Class', 'Appd_Std', 
                 'Restr_Std', 'Min_Date', 'Grow_Area']
+
 # load and combine all datasets
 dataframes = []
 for file in file_list:
@@ -433,8 +437,10 @@ for file in file_list:
         dataframes.append(df)
     except Exception as e:
         print(f"Could not load {file}: {e}")
+
 # combine all data
 all_data = pd.concat(dataframes, ignore_index=True)
+
 # fill NaN values for specific columns
 numeric_cols = ['GM', 'SDV', 'MAX_', 'Count_', 'MFCount', 'P90']
 for col in numeric_cols:
@@ -447,25 +453,26 @@ for col in numeric_cols:
 ###### MAIN #######
 ###################
 
-# Main execution
+
 if __name__ == "__main__":
-    # Start timing
+
+    # start timing
     start_time = time.time()
     
-    print(f"\n=== Predicting for 2020 using data through 2020 ===")
+    print(f"\n=== Predicting P90 values using data through given year ===")
     
-    # Process data
+    # process data
     train_data, stations, station_coords = process_data(all_data, 
                                                         train_up_to_year=2019, 
                                                         predict_for_year=2020)
     
-    # Train models and make predictions
+    # train models and make predictions
     results = train_and_predict(train_data, 
                                 stations, 
                                 station_coords, 
                                 train_up_to_year=2019, 
                                 predict_for_year=2020)
     
-    # Report overall time
+    # overall time
     elapsed_time = time.time() - start_time
-    print(f"\nAll processing completed in {elapsed_time:.2f} seconds")
+    print(f"\nCompleted in {elapsed_time:.2f} seconds")
