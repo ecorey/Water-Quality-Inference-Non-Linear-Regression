@@ -182,10 +182,11 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 # Create the model
                 model = StationP90Model(len(feature_cols))
                 criterion = nn.MSELoss()
-                optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+                optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-5)
+
                 
                 # Training loop
-                epochs = 50
+                epochs = 60
                 for epoch in range(epochs):
                     # Training
                     model.train()
@@ -393,14 +394,53 @@ for col in numeric_cols:
 class StationP90Model(nn.Module):
     def __init__(self, input_size):
         super().__init__()
-        self.network = nn.Sequential(
-            nn.Linear(input_size, 16),
+        
+        # For time series data, we need to determine the sequence length
+        # Each data point will be a feature vector with 'input_size' dimensions
+        # We'll reshape the input to treat it as a 1D sequence
+        
+        # The CNN expects input in the shape [batch_size, channels, sequence_length]
+        # We'll use a dynamic approach to handle variable sequence lengths
+        
+        self.conv_layers = nn.Sequential(
+            nn.Conv1d(in_channels=input_size, out_channels=16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool1d(kernel_size=2, stride=1),
+            nn.Conv1d(in_channels=16, out_channels=32, kernel_size=3, padding=1),
+            nn.ReLU()
+        )
+        
+        # The fully connected layers
+        self.fc_layers = nn.Sequential(
+            nn.Linear(32, 16),  # The input size will be determined dynamically
             nn.ReLU(),
             nn.Linear(16, 1)
         )
-    def forward(self, x):
-        return self.network(x)
     
+    def forward(self, x):
+        # x shape: [batch_size, features]
+        
+        # For Conv1d, we need [batch_size, channels, seq_length]
+        # We'll transpose to make features the channels
+        batch_size = x.size(0)
+        
+        # Reshape to [batch_size, features, 1]
+        x = x.unsqueeze(2)
+        
+        # Transpose to [batch_size, features, 1]
+        # This makes each feature a separate channel
+        x = x.transpose(1, 2)
+        
+        # Pass through convolutional layers
+        x = self.conv_layers(x)
+        
+        # Global average pooling to get fixed size regardless of input length
+        x = torch.mean(x, dim=2)
+        
+        # Pass through fully connected layers
+        x = self.fc_layers(x)
+        
+        return x 
 
 
 ###################
