@@ -2,12 +2,21 @@ import arcpy
 import os
 import pandas as pd
 
-# Parameters - Change these as needed
-project_gdb = r"C:\Users\bengs\OneDrive\Documents\ArcGIS\Projects\P90\P90.gdb"  # Path to your geodatabase
-csv_file = r"C:\Users\bengs\Downloads\P90\p90_predictions_2020_using_data_through_2019.csv"   # Path to your .csv file
-output_fc = "P90_Prediction_Points_From_CSV"                 # Name of the new feature class
-spatial_join_fc = "Spatial_Join_Actual_and_Prediction"        # Name of the spatial join output
-target_fc = os.path.join(project_gdb, "c2020_P90_Scores_XYTableToPoint")  # Target feature class for spatial join
+
+###################
+##### PARAMS ######
+###################
+
+# path to geodatabase
+project_gdb = r"C:\Users\bengs\OneDrive\Documents\ArcGIS\Projects\P90\P90.gdb"  
+# path to nn prediction .csv file
+csv_file = r"C:\Users\bengs\Downloads\P90\p90_predictions_2020_using_data_through_2019.csv"  
+# name of the created point feature class 
+output_fc = "P90_Prediction_Points_From_CSV"     
+# name of the created spatial join layer            
+spatial_join_fc = "Spatial_Join_Actual_and_Prediction"   
+# feature classes for spatial join with the actual P90 data and the prediction data    
+target_fc = os.path.join(project_gdb, "c2020_P90_Scores_XYTableToPoint")  
 
 # Output CSVs
 output_selected_csv = r"C:\Users\bengs\Downloads\P90\Selected_P90_Diff.csv"
