@@ -12,11 +12,11 @@ project_gdb = r"C:\Users\bengs\OneDrive\Documents\ArcGIS\Projects\P90\P90.gdb"
 # path to the nn prediction .csv file
 csv_file = r"C:\Users\bengs\Downloads\P90\p90_predictions_2020_using_data_through_2019.csv"  
 # name of the created point feature class 
-output_fc = "P90_Prediction_Points_From_CSV"     
+inferred_p90_points_fc = "P90_Prediction_Points_From_CSV"     
 # name of the created spatial join layer            
-spatial_join_fc = "Spatial_Join_Actual_and_Prediction"   
+spatial_join_inferred_and_actual = "Spatial_Join_Actual_and_Prediction"   
 # feature classes for spatial join with the actual P90 data and the prediction data    
-target_fc = os.path.join(project_gdb, "c2020_P90_Scores_XYTableToPoint")  
+actual_p90_points_fc = os.path.join(project_gdb, "c2020_P90_Scores_XYTableToPoint")  
 
 # created .csv files
 output_selected_csv = r"C:\Users\bengs\Downloads\P90\Selected_P90_Diff.csv"
@@ -33,7 +33,7 @@ arcpy.env.overwriteOutput = True
 
 
 # step 1: read the .csv using pandas
-print("Cleaning CSV file...")
+print("Cleaning the .csv file...")
 df = pd.read_csv(csv_file)
 
 # replace NaN values in the 'note' column with 'No Note'
@@ -47,22 +47,18 @@ df.to_csv(cleaned_csv, index=False)
 ###################
 
 
-# Step 2: Create a Table View from Cleaned CSV
-print("Creating Table View from Cleaned CSV...")
+# step 2: create a table view from the .csv
+print("Creating Table View from the .csv file...")
 arcpy.management.MakeTableView(cleaned_csv, "csv_view")
-
-# Inspect fields to confirm "Note" field is present
-fields = [f.name for f in arcpy.ListFields("csv_view")]
-print("Fields in Cleaned CSV:", fields)
 
 
 ###################
 
 
-# Step 3: Create Point Feature Class using the Cleaned Table View
+# step 3: create a point feature class using the table view
 print("Converting Cleaned CSV Table View to Point Feature Class...")
 arcpy.management.XYTableToPoint("csv_view", 
-                               os.path.join(project_gdb, output_fc), 
+                               os.path.join(project_gdb, inferred_p90_points_fc), 
                                "Long_DD", "Lat_DD", 
                                coordinate_system=arcpy.SpatialReference(4326))
 
@@ -70,11 +66,11 @@ arcpy.management.XYTableToPoint("csv_view",
 ###################
 
 
-# Step 4: Perform a Spatial Join with the new feature class and target FC
+# step 4: spatial join with the new feature class (inferred values) and the target feature class (actual values)
 print("Performing Spatial Join...")
-spatial_join_output = os.path.join(project_gdb, spatial_join_fc)
-arcpy.analysis.SpatialJoin(target_fc, 
-                           os.path.join(project_gdb, output_fc), 
+spatial_join_output = os.path.join(project_gdb, spatial_join_inferred_and_actual)
+arcpy.analysis.SpatialJoin(actual_p90_points_fc, 
+                           os.path.join(project_gdb, inferred_p90_points_fc), 
                            spatial_join_output, 
                            join_type="KEEP_COMMON", 
                            match_option="CLOSEST")
