@@ -19,10 +19,10 @@ inferred_p90_points_fc = "P90_Prediction_Points_From_CSV"
 spatial_join_inferred_and_actual = "Spatial_Join_Actual_and_Prediction"   
 
 # create .csv file for selected stations that are considered inaccurate
-output_query_csv = r"C:\Users\bengs\Downloads\P90\Selected_Station_Query.csv"
+innacurate_stations_csv = r"C:\Users\bengs\Downloads\P90\Selected_Station_Query.csv"
 
 # created point feature class for selected stations
-output_point_fc = os.path.join(project_gdb, "Innacurate_Station_Points")
+innacurate_stations_point_fc = os.path.join(project_gdb, "Innacurate_Station_Points")
 
 # set environment
 arcpy.env.overwriteOutput = True
@@ -31,7 +31,7 @@ arcpy.env.overwriteOutput = True
 ###################
 
 
-# step 1: read the .csv using pandas
+# step 1: read the .csv with pandas
 print("Reading the .csv file...")
 df = pd.read_csv(nn_inference_file)
 
@@ -39,7 +39,7 @@ df = pd.read_csv(nn_inference_file)
 df['Note'] = df['Note'].fillna("No Note")
 
 # save the .csv as a temporary file
-nn_inference_file_modified = r"C:\Users\bengs\Downloads\P90\cleaned_p90_predictions.csv"
+nn_inference_file_modified = r"C:\Users\bengs\Downloads\P90\modified_p90_predictions.csv"
 df.to_csv(nn_inference_file_modified, index=False)
 
 
@@ -47,7 +47,7 @@ df.to_csv(nn_inference_file_modified, index=False)
 
 
 # step 2: create a table view from the .csv
-print("Creating Table View from the .csv file...")
+print("Creating table view from the .csv file...")
 arcpy.management.MakeTableView(nn_inference_file_modified, "csv_view")
 
 
@@ -55,7 +55,7 @@ arcpy.management.MakeTableView(nn_inference_file_modified, "csv_view")
 
 
 # step 3: create a point feature class using the table view
-print("Converting Cleaned CSV Table View to Point Feature Class...")
+print("Creating point feature class for inferred P90 values...")
 arcpy.management.XYTableToPoint("csv_view", 
                                os.path.join(project_gdb, inferred_p90_points_fc), 
                                "Long_DD", "Lat_DD", 
@@ -65,8 +65,8 @@ arcpy.management.XYTableToPoint("csv_view",
 ###################
 
 
-# step 4: spatial join with the new feature class (inferred values) and the target feature class (actual values)
-print("Performing Spatial Join...")
+# step 4: spatial join with the new point feature class (inferred values) and the target point feature class (actual values)
+print("Performing spatial join...")
 spatial_join_output = os.path.join(project_gdb, spatial_join_inferred_and_actual)
 arcpy.analysis.SpatialJoin(actual_p90_points_fc, 
                            os.path.join(project_gdb, inferred_p90_points_fc), 
@@ -78,12 +78,12 @@ arcpy.analysis.SpatialJoin(actual_p90_points_fc,
 ###################
 
 
-# Step 5: Create a new field called P90_DIFF and calculate the difference
-print("Creating and Calculating P90_DIFF field...")
-field_name = "P90_DIFF"
-arcpy.management.AddField(spatial_join_output, field_name, "DOUBLE")
+# step 5: create a new field called P90_DIFF and calculate the difference between the actual and predicted P90 values
+print("Creating and calculating the P90_DIFF field...")
+p90_diff_field_name = "P90_DIFF"
+arcpy.management.AddField(spatial_join_output, p90_diff_field_name, "DOUBLE")
 arcpy.management.CalculateField(spatial_join_output, 
-                                field_name, 
+                                p90_diff_field_name, 
                                 "!P90! - !Predicted_P90!", 
                                 "PYTHON3")
 
@@ -91,33 +91,38 @@ arcpy.management.CalculateField(spatial_join_output,
 ###################
 
 
-# Step 6: Select Using Query and Export to CSV
-print("Selecting with Query...")
+# step 6: select the inaccurate stations with a query and create a new feature class 
+print("Selecting the stations that are considered inaccurate...")
 
-# Build the query for selection
-query = f"({field_name} > 10 OR {field_name} < -10) AND Model_Accuracy IS NOT NULL AND Note = 'No Note'"
+# query stations that are considered inaccurate
+query = f"({p90_diff_field_name} > 13.9 OR {p90_diff_field_name} < -13.9) AND Model_Accuracy IS NOT NULL AND Note = 'No Note'"
 
-# Directly select and create a new feature class without creating a layer on the map
-arcpy.analysis.Select(spatial_join_output, output_point_fc, query)
-print(f"New Point Feature Class created: {output_point_fc}")
+# select and create a new feature class with the selected stations
+arcpy.analysis.Select(spatial_join_output, innacurate_stations_point_fc, query)
+print(f"Inaccurate stations point feature class created: {innacurate_stations_point_fc}")
 
 # Count the selected stations
-selected_count = int(arcpy.management.GetCount(output_point_fc)[0])
-print(f"Number of stations matching query: {selected_count}")
+selected_stations_count = int(arcpy.management.GetCount(innacurate_stations_point_fc)[0])
+print(f"Number of stations matching query: {selected_stations_count}")
 
 
 ###################
 
 
-# Step 7: Export Selected Stations to CSV
-print("Exporting Selected Stations to CSV...")
+# step 7: Create a new .csv file with the selected stations  
+print("Creating selected stations .csv file...")
 
-# Export the selected stations to a new CSV
-arcpy.conversion.TableToTable(output_point_fc, 
-                              os.path.dirname(output_query_csv), 
-                              os.path.basename(output_query_csv))
-print(f"Query result exported to: {output_query_csv}")
+# Create the .csv file from the selected stations   
+arcpy.conversion.TableToTable(innacurate_stations_point_fc, 
+                              os.path.dirname(innacurate_stations_csv), 
+                              os.path.basename(innacurate_stations_csv))
+print(f"Inaccurate stations query results exported to: {innacurate_stations_csv}")
 
+
+###################
+
+
+# step 8: Confirm completion
 print("Process Completed Successfully!")
 
 
