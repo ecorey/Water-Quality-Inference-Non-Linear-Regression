@@ -9,21 +9,20 @@ import pandas as pd
 
 # path to the geodatabase
 project_gdb = r"C:\Users\bengs\OneDrive\Documents\ArcGIS\Projects\P90\P90.gdb"  
-# path to the nn prediction .csv file
-csv_file = r"C:\Users\bengs\Downloads\P90\p90_predictions_2020_using_data_through_2019.csv"  
-# name of the created point feature class 
+# path to the nn prediction .csv file after nn is run
+nn_inference_file = r"C:\Users\bengs\Downloads\P90\p90_predictions_2020_using_data_through_2019.csv" 
+# created point feature class for actual values
+actual_p90_points_fc = os.path.join(project_gdb, "c2020_P90_Scores_XYTableToPoint")   
+# created point feature class for inferred values
 inferred_p90_points_fc = "P90_Prediction_Points_From_CSV"     
-# name of the created spatial join layer            
+# created spatial join layer for the inferred values and the actual values           
 spatial_join_inferred_and_actual = "Spatial_Join_Actual_and_Prediction"   
-# feature classes for spatial join with the actual P90 data and the prediction data    
-actual_p90_points_fc = os.path.join(project_gdb, "c2020_P90_Scores_XYTableToPoint")  
 
-# created .csv files
-output_selected_csv = r"C:\Users\bengs\Downloads\P90\Selected_P90_Diff.csv"
+# create .csv file for selected stations that are considered inaccurate
 output_query_csv = r"C:\Users\bengs\Downloads\P90\Selected_Station_Query.csv"
 
 # created point feature class for selected stations
-output_point_fc = os.path.join(project_gdb, "Selected_Station_Points")
+output_point_fc = os.path.join(project_gdb, "Innacurate_Station_Points")
 
 # set environment
 arcpy.env.overwriteOutput = True
@@ -33,15 +32,15 @@ arcpy.env.overwriteOutput = True
 
 
 # step 1: read the .csv using pandas
-print("Cleaning the .csv file...")
-df = pd.read_csv(csv_file)
+print("Reading the .csv file...")
+df = pd.read_csv(nn_inference_file)
 
 # replace NaN values in the 'note' column with 'No Note'
 df['Note'] = df['Note'].fillna("No Note")
 
 # save the .csv as a temporary file
-cleaned_csv = r"C:\Users\bengs\Downloads\P90\cleaned_p90_predictions.csv"
-df.to_csv(cleaned_csv, index=False)
+nn_inference_file_modified = r"C:\Users\bengs\Downloads\P90\cleaned_p90_predictions.csv"
+df.to_csv(nn_inference_file_modified, index=False)
 
 
 ###################
@@ -49,7 +48,7 @@ df.to_csv(cleaned_csv, index=False)
 
 # step 2: create a table view from the .csv
 print("Creating Table View from the .csv file...")
-arcpy.management.MakeTableView(cleaned_csv, "csv_view")
+arcpy.management.MakeTableView(nn_inference_file_modified, "csv_view")
 
 
 ###################
