@@ -43,9 +43,11 @@ arcpy.env.overwriteOutput = True
 
 
 ###################
+##### STEP 1 ######
+###################
 
 
-# step 1: read the .csv with pandas
+# read the .csv with pandas
 print("Reading the .csv file...")
 df = pd.read_csv(nn_inference_file)
 
@@ -58,17 +60,21 @@ df.to_csv(nn_inference_file_modified, index=False)
 
 
 ###################
+##### STEP 2 ######
+###################
 
 
-# step 2: create a table view from the .csv
+# create a table view from the .csv
 print("Creating table view from the .csv file...")
 arcpy.management.MakeTableView(nn_inference_file_modified, "csv_view")
 
 
 ###################
+##### STEP 3 ######
+###################
 
 
-# step 3: create a point feature class using the table view
+# create a point feature class using the table view
 print("Creating point feature class for inferred P90 values...")
 arcpy.management.XYTableToPoint("csv_view", 
                                os.path.join(project_gdb, inferred_p90_points_fc), 
@@ -77,9 +83,11 @@ arcpy.management.XYTableToPoint("csv_view",
 
 
 ###################
+##### STEP 4 ######
+###################
 
 
-# step 4: spatial join with the new point feature class (inferred values) and the target point feature class (actual values)
+# spatial join with the new point feature class (inferred values) and the target point feature class (actual values)
 print("Performing spatial join...")
 spatial_join_output = os.path.join(project_gdb, spatial_join_inferred_and_actual)
 arcpy.analysis.SpatialJoin(actual_p90_points_fc, 
@@ -90,9 +98,11 @@ arcpy.analysis.SpatialJoin(actual_p90_points_fc,
 
 
 ###################
+##### STEP 5 ######
+###################
 
 
-# step 5: create a new field called P90_DIFF and calculate the difference between the actual and predicted P90 values
+# create a new field called P90_DIFF and calculate the difference between the actual and predicted P90 values
 print("Creating and calculating the P90_DIFF field...")
 p90_diff_field_name = "P90_DIFF"
 arcpy.management.AddField(spatial_join_output, p90_diff_field_name, "DOUBLE")
@@ -103,9 +113,11 @@ arcpy.management.CalculateField(spatial_join_output,
 
 
 ###################
+##### STEP 6 ######
+###################
 
 
-# step 6: select the inaccurate stations with a query and create a new feature class 
+# select the inaccurate stations with a query and create a new feature class 
 print("Selecting the stations that are considered inaccurate...")
 
 # query stations that are considered inaccurate
@@ -115,18 +127,20 @@ query = f"({p90_diff_field_name} > 13.9 OR {p90_diff_field_name} < -13.9) AND Mo
 arcpy.analysis.Select(spatial_join_output, innacurate_stations_point_fc, query)
 print(f"Inaccurate stations point feature class created: {innacurate_stations_point_fc}")
 
-# Count the selected stations
+# count the selected stations
 selected_stations_count = int(arcpy.management.GetCount(innacurate_stations_point_fc)[0])
 print(f"Number of stations matching query: {selected_stations_count}")
 
 
 ###################
+##### STEP 7 ######
+###################
 
 
-# step 7: Create a new .csv file with the selected stations  
+# create a new .csv file with the selected stations  
 print("Creating selected stations .csv file...")
 
-# Create the .csv file from the selected stations   
+# create the .csv file from the selected stations   
 arcpy.conversion.TableToTable(innacurate_stations_point_fc, 
                               os.path.dirname(innacurate_stations_csv), 
                               os.path.basename(innacurate_stations_csv))
@@ -134,9 +148,11 @@ print(f"Inaccurate stations query results exported to: {innacurate_stations_csv}
 
 
 ###################
+##### STEP 8 ######
+###################
 
 
-# step 8: Confirm completion
+# confirm completion
 print("Process Completed Successfully!")
 
 
