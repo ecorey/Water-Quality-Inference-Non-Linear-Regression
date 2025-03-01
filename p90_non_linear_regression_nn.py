@@ -25,7 +25,7 @@ print(f"Using device: {device}")
 
 def process_data(train_up_to_year):
     """
-    Process data and prepare for training and testing
+    Processes the data and prepares it for training and testing in the neural network model.
     Args:
         train_up_to_year: Year up to which to use data for training
     
@@ -47,8 +47,8 @@ def process_data(train_up_to_year):
     ]
 
     # columns to drop
-    drop_columns = ['X', 'Y', 'x', 'y', 'GlobalID', 'OBJECTID', 'Class', 'Appd_Std', 
-                    'Restr_Std', 'Min_Date', 'Grow_Area']
+    drop_columns = ['X', 'Y', 'x', 'y', 'GlobalID', 'OBJECTID', 'Appd_Std', 
+                    'Restr_Std', 'Min_Date', 'Class', 'Grow_Area']
 
     # load and combine all datasets
     dataframes = []
@@ -105,8 +105,9 @@ def process_data(train_up_to_year):
 def train_and_predict(train_data, stations, station_coords, train_up_to_year, predict_for_year, 
                       feature_cols=['GM', 'SDV', 'MAX_', 'Count_', 'MFCount', 'Year']):
     """
-    Train models and make predictions with separate training and testing loops.
-    Handles stations with limited data using fallback methods.
+    Trains a model and makes predictions with separate training and testing loops.
+    The model uses a non-linear regression neural network to predict the P90 values.
+    Handles stations that have limited data by using a simpler model.
 
     Args:
         train_data: Data for training
@@ -188,6 +189,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                             nn.ReLU(),
                             nn.Linear(16, 1)
                         )
+
                     def forward(self, x):
                         return self.network(x)
                 
@@ -226,12 +228,6 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 
                 # calculate loss
                 loss = criterion(y_pred, y_tensor)
-                
-                # calculate accuracy (for monitoring)
-                mse_metric = MeanSquaredError().to(device)
-                mse_value = mse_metric(y_pred, y_tensor)
-                max_expected_mse = 100.0  
-                accuracy_calculated = 100 * (1 - min(mse_value / max_expected_mse, 1.0))
                 
                 # optimizer zero grad
                 optimizer.zero_grad()
@@ -297,6 +293,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 
                 # calculate accuracy
                 mse_metric = MeanSquaredError().to(device)
+                max_expected_mse = 100.0  
                 test_mse = mse_metric(test_preds, y_tensor)
                 accuracy_calculated_test = 100 * (1 - min(test_mse / max_expected_mse, 1.0))
                 
@@ -313,6 +310,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 'Predicted_P90': prediction,
                 'Model_Accuracy': float(accuracy_calculated_test.cpu().numpy()) if isinstance(accuracy_calculated_test, torch.Tensor) else accuracy_calculated_test
             }
+
 
             # add geographical info if available
             if station in station_coords:
@@ -410,14 +408,14 @@ if __name__ == "__main__":
     print(f"\n=== Predicting P90 values using data through given year ===")
     
     # process data
-    train_data, stations, station_coords = process_data(train_up_to_year=2019)
+    train_data, stations, station_coords = process_data(train_up_to_year=2023)
     
     # train models and make predictions
     results = train_and_predict(train_data, 
                                 stations, 
                                 station_coords, 
-                                train_up_to_year=2019, 
-                                predict_for_year=2020)
+                                train_up_to_year=2023, 
+                                predict_for_year=2024)
     
     # overall time
     elapsed_time = time.time() - start_time
