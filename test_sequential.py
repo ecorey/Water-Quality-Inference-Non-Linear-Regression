@@ -150,7 +150,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 mse_value = mse_metric(y_pred, y_tensor)
 
 
-                max_expected_mse = 100.0  # Set this based on your data's scale
+                max_expected_mse = 100.0  
                 accuracy_calculated = 100 * (1 - min(mse_value / max_expected_mse, 1.0))
 
                 
