@@ -62,7 +62,6 @@ def process_data(data, train_up_to_year):
     
     return train_data, stations, station_coords
 
-
 def train_and_predict(train_data, stations, station_coords, train_up_to_year, predict_for_year, 
                       feature_cols=['GM', 'SDV', 'MAX_', 'Count_', 'MFCount', 'Year']):
     """
@@ -81,7 +80,6 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
         DataFrame with predictions
     """
     
-   
     # Set the random seed for reproducibility
     torch.manual_seed(42)
     
@@ -93,21 +91,15 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     skipped_stations = []
 
     total_stations = len(stations)
-
-    
     
     # Progress tracking
     station_iterator = tqdm(stations, desc="Processing stations", total=len(stations))
 
-
     for station in station_iterator:
-
         try:
-
             # Get data for this station
             station_data = train_data[train_data['Station'] == station].sort_values('Year')
             
-
             # Check if we have data for the train_up_to_year
             latest_year_data = station_data[station_data['Year'] == train_up_to_year]
             if len(latest_year_data) == 0:
@@ -115,7 +107,6 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 max_year = station_data['Year'].max()
                 latest_year_data = station_data[station_data['Year'] == max_year]
             
-
             # Prepare input data
             X = station_data[feature_cols].values
             y = station_data['P90'].values
@@ -128,10 +119,31 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
             X_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(device)
             y_tensor = torch.tensor(y, dtype=torch.float32).view(-1, 1).to(device)
             
-            # Create the model
-            model = StationP90Model(len(feature_cols)).to(device)
+            # Check if we have enough data for BatchNorm (need at least 2 samples)
+            if len(station_data) < 2:
+                # Use a simpler model without BatchNorm for stations with minimal data
+                class SimpleModel(nn.Module):
+                    def __init__(self, input_size):
+                        super().__init__()
+                        self.network = nn.Sequential(
+                            nn.Linear(input_size, 16),
+                            nn.ReLU(),
+                            nn.Linear(16, 1)
+                        )
+                    def forward(self, x):
+                        return self.network(x)
+                
+                model = SimpleModel(len(feature_cols)).to(device)
+                limited_data_stations.append(f"{station}: Only {len(station_data)} records, using simple model")
+            else:
+                # Use the regular model with BatchNorm for stations with sufficient data
+                model = StationP90Model(len(feature_cols)).to(device)
+            
             criterion = nn.MSELoss()
-            optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+            optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=7, factor=0.8, verbose=False)
+
             
             # Training loop
             epochs = 50
@@ -149,10 +161,8 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 mse_metric = MeanSquaredError().to(device)
                 mse_value = mse_metric(y_pred, y_tensor)
 
-
                 max_expected_mse = 100.0  
                 accuracy_calculated = 100 * (1 - min(mse_value / max_expected_mse, 1.0))
-
                 
                 # Optimizer zero grad
                 optimizer.zero_grad()
@@ -162,6 +172,9 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 
                 # Optimizer step
                 optimizer.step()
+
+                # Update learning rate
+                scheduler.step(loss)
                 
                 # Print progress every 10 epochs for first station only
                 if epoch % 10 == 0 and station == stations[0]:
@@ -182,8 +195,6 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 latest_scaled = scaler.transform(latest_data_copy)
                 X_test = torch.tensor(latest_scaled, dtype=torch.float32).to(device)
                 
-
-
                 # Make prediction
                 with torch.inference_mode():
                     prediction = model(X_test).item()
@@ -208,7 +219,6 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                     'Year': predict_for_year,
                     'Predicted_P90': prediction,
                     'Model_Accuracy': float(accuracy_calculated_test.cpu().numpy()) if isinstance(accuracy_calculated_test, torch.Tensor) else accuracy_calculated_test
- 
                 }
                 
                 # Add geographical info if available
@@ -222,14 +232,10 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 if len(predictions) % 50 == 0:
                     temp_df = pd.DataFrame(predictions)
                     temp_df.to_csv('p90_predictions_temp.csv', index=False)
-                
-      
-            
-            
+        
         except Exception as e:
             error_stations.append(f"{station}: {str(e)}")
             print(f"Error processing station {station}: {e}")
-            
     
     # Create result DataFrame
     results_df = pd.DataFrame(predictions)
@@ -242,7 +248,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     print("\n===== SUMMARY =====")
     print(f"Total stations processed: {total_stations}")
     print(f"Successful predictions with neural network: {total_stations - len(limited_data_stations) - len(error_stations) - len(timeout_stations) - len(skipped_stations)}")
-    print(f"Stations with limited data: {len(limited_data_stations)}")
+    print(f"Stations with limited data (using simpler model): {len(limited_data_stations)}")
     print(f"Stations with errors: {len(error_stations)}")
     print(f"Stations with timeouts: {len(timeout_stations)}")
     print(f"Stations skipped (no data): {len(skipped_stations)}")
@@ -265,19 +271,13 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     
     if overall_accuracy is not None:
         print(f"\nOverall model accuracy (across all stations): {overall_accuracy:.2f}%")
-
-
     
     # Save to CSV
     output_file = f'p90_predictions_{predict_for_year}_using_data_through_{train_up_to_year}.csv'
     results_df.to_csv(output_file, index=False)
     print(f"\nSaved {len(results_df)} predictions to {output_file}")
-
-
     
     return results_df
-
-
 
 ###################
 ###### MODEL ######
@@ -287,11 +287,15 @@ class StationP90Model(nn.Module):
     def __init__(self, input_size):
         super().__init__()
         self.network = nn.Sequential(
-            nn.Linear(input_size, 64),
+            nn.Linear(input_size, 32),
             nn.ReLU(),
-            nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
+            nn.Dropout(0.2),
+            nn.Linear(32, 16),
             nn.ReLU(),
-            nn.Linear(32, 1)
+            nn.BatchNorm1d(16),
+            nn.Dropout(0.1),
+            nn.Linear(16, 1)
         )
     def forward(self, x):
         return self.network(x)

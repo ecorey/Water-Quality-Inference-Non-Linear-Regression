@@ -51,8 +51,7 @@ arcpy.env.overwriteOutput = True
 print("Reading the .csv file...")
 df = pd.read_csv(nn_inference_file)
 
-# replace NaN values in the 'note' column with 'No Note'
-df['Note'] = df['Note'].fillna("No Note")
+
 
 # save the .csv as a temporary file
 nn_inference_file_modified = r"C:\Users\bengs\Downloads\P90\modified_p90_predictions.csv"
@@ -121,7 +120,7 @@ arcpy.management.CalculateField(spatial_join_output,
 print("Selecting the stations that are considered inaccurate...")
 
 # query stations that are considered inaccurate
-query = f"({p90_diff_field_name} > 13.9 OR {p90_diff_field_name} < -13.9) AND Model_Accuracy IS NOT NULL AND Note = 'No Note'"
+query = f"({p90_diff_field_name} > 13.9 OR {p90_diff_field_name} < -13.9) AND Model_Accuracy IS NOT NULL"
 
 # select and create a new feature class with the selected stations
 arcpy.analysis.Select(spatial_join_output, innacurate_stations_point_fc, query)
