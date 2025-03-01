@@ -155,7 +155,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 max_year = station_data['Year'].max()
                 latest_year_data = station_data[station_data['Year'] == max_year]
             
-            # Initialize predictions for this station
+            # initialize predictions for this station
             p90_prediction = None
             gm_prediction = None
             p90_accuracy = None
@@ -407,22 +407,22 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 if best_model_state_gm is not None:
                     model_gm.load_state_dict(best_model_state_gm)
 
-                # For the GM prediction, we need to use the predicted P90 value if available
+                
                 if p90_prediction is not None and 'P90' in feature_cols_gm:
-                    # Get latest data for prediction
+                    # get latest data for prediction
                     latest_data_gm = latest_year_data.iloc[0][feature_cols_gm].values.reshape(1, -1)
                     latest_data_gm_copy = latest_data_gm.copy() 
                     
-                    # Update the P90 value with our prediction
+                    # update the P90 value with our prediction
                     p90_index = feature_cols_gm.index('P90')
                     latest_data_gm_copy[0, p90_index] = p90_prediction
                     
-                    # Update the Year value
+                    # update the Year value
                     year_index = feature_cols_gm.index('Year') if 'Year' in feature_cols_gm else None
                     if year_index is not None:
                         latest_data_gm_copy[0, year_index] = predict_for_year
                     
-                    # Add squared values
+                    # add squared values
                     latest_data_enhanced_gm = latest_data_gm_copy.copy()
                     for feature in numeric_features:
                         if feature in feature_cols_gm:
@@ -430,20 +430,20 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                             squared_value = latest_data_gm_copy[0, i] ** 2
                             latest_data_enhanced_gm = np.hstack((latest_data_enhanced_gm, np.array([[squared_value]])))
                     
-                    # Scale features
+                    # scale features
                     latest_scaled_gm = scaler_gm.transform(latest_data_enhanced_gm)
                     X_test_gm = torch.tensor(latest_scaled_gm, dtype=torch.float32).to(device)
                 else:
-                    # If P90 prediction not available, use the original data
+                    # if P90 prediction not available, use the original data
                     latest_data_gm = latest_year_data.iloc[0][feature_cols_gm].values.reshape(1, -1)
                     latest_data_gm_copy = latest_data_gm.copy() 
                     
-                    # Update Year
+                    # update Year
                     year_index = feature_cols_gm.index('Year') if 'Year' in feature_cols_gm else None
                     if year_index is not None:
                         latest_data_gm_copy[0, year_index] = predict_for_year
                     
-                    # Add squared values
+                    # add squared values
                     latest_data_enhanced_gm = latest_data_gm_copy.copy()
                     for feature in numeric_features:
                         if feature in feature_cols_gm:
@@ -451,18 +451,18 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                             squared_value = latest_data_gm_copy[0, i] ** 2
                             latest_data_enhanced_gm = np.hstack((latest_data_enhanced_gm, np.array([[squared_value]])))
                     
-                    # Scale features
+                    # scale features
                     latest_scaled_gm = scaler_gm.transform(latest_data_enhanced_gm)
                     X_test_gm = torch.tensor(latest_scaled_gm, dtype=torch.float32).to(device)
 
-                # Make GM prediction
+                # make GM prediction
                 with torch.inference_mode():
                     gm_prediction = model_gm(X_test_gm).item()
                     
-                    # Forwards pass for accuracy
+                    # forward pass
                     test_preds_gm = model_gm(X_tensor_gm)
                     
-                    # Calculate accuracy
+                    # calculate accuracy
                     mse_metric = MeanSquaredError().to(device)
                     max_expected_mse = 100.0  
                     test_mse_gm = mse_metric(test_preds_gm, y_tensor_gm)
@@ -474,13 +474,13 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 if station == stations[0]:
                     print(f"Final GM test accuracy for {station}: {gm_accuracy:.2f}%")
 
-            # Create the result entry with both predictions
+            # create the result entry with both predictions
             result_entry = {
                 'Station': station,
                 'Year': predict_for_year
             }
             
-            # Add predictions if available
+            # add predictions 
             if p90_prediction is not None:
                 result_entry['Predicted_P90'] = p90_prediction
                 result_entry['P90_Model_Accuracy'] = float(p90_accuracy.cpu().numpy()) if isinstance(p90_accuracy, torch.Tensor) else p90_accuracy
@@ -490,14 +490,14 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 result_entry['GM_Model_Accuracy'] = float(gm_accuracy.cpu().numpy()) if isinstance(gm_accuracy, torch.Tensor) else gm_accuracy
 
 
-            # Add geographical info if available
+            # add geographical coordinates
             if station in station_coords:
                 result_entry['Lat_DD'] = station_coords[station][0]
                 result_entry['Long_DD'] = station_coords[station][1]
 
             predictions.append(result_entry)
                 
-            # Save the results as a temporary file every 50 stations
+            # save the results as a temporary file every 50 stations
             if len(predictions) % 50 == 0:
                 temp_df = pd.DataFrame(predictions)
                 temp_df.to_csv('predictions_temp.csv', index=False)
@@ -506,17 +506,17 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
             error_stations.append(f"{station}: {str(e)}")
             print(f"Error processing station {station}: {e}")
     
-    # Create the result DataFrame
+    # create the result DataFrame
     results_df = pd.DataFrame(predictions)
     
-    # Calculate overall accuracy
+    # calculate overall accuracy
     valid_p90_accuracies = results_df['P90_Model_Accuracy'].dropna() if 'P90_Model_Accuracy' in results_df.columns else pd.Series([])
     valid_gm_accuracies = results_df['GM_Model_Accuracy'].dropna() if 'GM_Model_Accuracy' in results_df.columns else pd.Series([])
     
     overall_p90_accuracy = valid_p90_accuracies.mean() if len(valid_p90_accuracies) > 0 else None
     overall_gm_accuracy = valid_gm_accuracies.mean() if len(valid_gm_accuracies) > 0 else None
     
-    # Print summary 
+    # print summary 
     print("\n===== SUMMARY =====")
     print(f"Total stations processed: {total_stations}")
     print(f"Successful predictions with neural network: {total_stations - len(limited_data_stations) - len(error_stations) - len(timeout_stations) - len(skipped_stations)}")
@@ -525,7 +525,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     print(f"Stations with timeouts: {len(timeout_stations)}")
     print(f"Stations skipped (no data): {len(skipped_stations)}")
     
-    # Print examples of stations with issues
+    # print examples of stations with issues
     if limited_data_stations:
         print(f"\nExample stations with limited data (showing {min(5, len(limited_data_stations))} of {len(limited_data_stations)}):")
         for station_info in limited_data_stations[:5]:
@@ -546,7 +546,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     if overall_gm_accuracy is not None:
         print(f"\nOverall GM model accuracy (across all stations): {overall_gm_accuracy:.2f}%")
     
-    # Save to a .csv file
+    # save to a .csv file
     output_file = f'p90_gm_predictions_{predict_for_year}_using_data_through_{train_up_to_year}.csv'
     results_df.to_csv(output_file, index=False)
     print(f"\nSaved {len(results_df)} predictions to {output_file}")
