@@ -99,6 +99,26 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
         try:
             # Get data for this station
             station_data = train_data[train_data['Station'] == station].sort_values('Year')
+
+            # Prepare input data
+            X = station_data[feature_cols].values
+            y = station_data['P90'].values
+
+            # Create polynomial features (squared terms)
+            numeric_features = ['GM', 'SDV', 'MAX_']  # Define which features to square
+            X_enhanced = X.copy()
+            feature_names = feature_cols.copy()  # Keep track of feature names
+
+            # Add squared terms for numeric features
+            for feature in numeric_features:
+                if feature in feature_cols:
+                    i = feature_cols.index(feature)
+                    # Create the squared term
+                    squared_values = X[:, i] ** 2
+                    # Add it to the enhanced matrix
+                    X_enhanced = np.hstack((X_enhanced, squared_values.reshape(-1, 1)))
+                    # Track the new feature name
+                    feature_names.append(f"{feature}_squared")
             
             # Check if we have data for the train_up_to_year
             latest_year_data = station_data[station_data['Year'] == train_up_to_year]
@@ -107,13 +127,11 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 max_year = station_data['Year'].max()
                 latest_year_data = station_data[station_data['Year'] == max_year]
             
-            # Prepare input data
-            X = station_data[feature_cols].values
-            y = station_data['P90'].values
+           
             
             # Scale features
             scaler = StandardScaler()
-            X_scaled = scaler.fit_transform(X)
+            X_scaled = scaler.fit_transform(X_enhanced)
             
             # Convert to tensors
             X_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(device)
@@ -133,20 +151,31 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                     def forward(self, x):
                         return self.network(x)
                 
-                model = SimpleModel(len(feature_cols)).to(device)
-                limited_data_stations.append(f"{station}: Only {len(station_data)} records, using simple model")
+                model = SimpleModel(X_enhanced.shape[1]).to(device)
+                limited_data_stations.append(f"{station}: Only {len(station_data)} records, using simple model") 
             else:
                 # Use the regular model with BatchNorm for stations with sufficient data
-                model = StationP90Model(len(feature_cols)).to(device)
+                model = StationP90Model(X_enhanced.shape[1]).to(device)
             
             criterion = nn.MSELoss()
             optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 
-            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=7, factor=0.8, verbose=False)
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=15, factor=0.5, verbose=False)
 
-            
-            # Training loop
+            # Initialize early stopping variables
+            best_loss = float('inf')
+            best_model_state = None
+            patience = 10  # Number of epochs to wait before stopping if no improvement
+            patience_counter = 0
+
+
+            # Training loop with early stopping
             epochs = 50
+            best_loss = float('inf')
+            best_model_state = None
+            patience = 15  # Increased patience
+            patience_counter = 0
+
             for epoch in range(epochs):
                 # Training
                 model.train()
@@ -157,10 +186,9 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 # Calculate loss
                 loss = criterion(y_pred, y_tensor)
                 
-                # Calculate accuracy
+                # Calculate accuracy (just for monitoring)
                 mse_metric = MeanSquaredError().to(device)
                 mse_value = mse_metric(y_pred, y_tensor)
-
                 max_expected_mse = 100.0  
                 accuracy_calculated = 100 * (1 - min(mse_value / max_expected_mse, 1.0))
                 
@@ -172,66 +200,93 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 
                 # Optimizer step
                 optimizer.step()
-
+                
                 # Update learning rate
                 scheduler.step(loss)
+                
+                # Early stopping logic
+                if loss.item() < best_loss:
+                    best_loss = loss.item()
+                    best_model_state = model.state_dict().copy()  # Save the model state
+                    patience_counter = 0  # Reset counter
+                else:
+                    patience_counter += 1  # Increment counter
+                
+                # If no improvement for 'patience' epochs, stop training
+                if patience_counter >= patience:
+                    if station == stations[0]:
+                        print(f"Early stopping for station {station} at epoch {epoch}")
+                    break
                 
                 # Print progress every 10 epochs for first station only
                 if epoch % 10 == 0 and station == stations[0]:
                     print(f"Station {station}, Epoch {epoch}/{epochs}, Loss: {loss.item():.4f}, Accuracy: {accuracy_calculated:.2f}%")
+
+            # After training completes, load the best model for prediction
+            model.eval()
+            if best_model_state is not None:
+                model.load_state_dict(best_model_state)
+
+            # Get latest data for prediction (from the most recent year available)
+            latest_data = latest_year_data.iloc[0][feature_cols].values.reshape(1, -1)
+            latest_data_copy = latest_data.copy()             
+
+            # Modify the Year value to be the prediction year
+            year_index = feature_cols.index('Year') if 'Year' in feature_cols else None
+            if year_index is not None:
+                latest_data_copy[0, year_index] = predict_for_year
+
+            # Add squared terms to the prediction data
+            latest_data_enhanced = latest_data_copy.copy()
+            for feature in numeric_features:
+                if feature in feature_cols:
+                    i = feature_cols.index(feature)
+                    # Create squared term
+                    squared_value = latest_data_copy[0, i] ** 2
+                    # Add to enhanced features
+                    latest_data_enhanced = np.hstack((latest_data_enhanced, np.array([[squared_value]])))
+
+            # Scale with the same scaler used for training
+            latest_scaled = scaler.transform(latest_data_enhanced)
+            X_test = torch.tensor(latest_scaled, dtype=torch.float32).to(device)
+
+            # Make prediction
+            with torch.inference_mode():
+                prediction = model(X_test).item()
                 
-                # Testing/Prediction
-                model.eval()
+                # Calculate model accuracy for this station
+                test_preds = model(X_tensor)
                 
-                # Get latest data for prediction (from the most recent year available)
-                latest_data = latest_year_data.iloc[0][feature_cols].values.reshape(1, -1)
+                # Calculate accuracy
+                mse_metric = MeanSquaredError().to(device)
+                test_mse = mse_metric(test_preds, y_tensor)
+                accuracy_calculated_test = 100 * (1 - min(test_mse / max_expected_mse, 1.0))
                 
-                # Modify the Year value to be the prediction year
-                latest_data_copy = latest_data.copy()
-                year_index = feature_cols.index('Year') if 'Year' in feature_cols else None
-                if year_index is not None:
-                    latest_data_copy[0, year_index] = predict_for_year
+                prediction = max(0, prediction)  
+                prediction = round(prediction, 1)  
+
+            if station == stations[0]:
+                print(f"Final test accuracy for {station}: {accuracy_calculated_test:.2f}%")
+
+            # Create result entry
+            result_entry = {
+                'Station': station,
+                'Year': predict_for_year,
+                'Predicted_P90': prediction,
+                'Model_Accuracy': float(accuracy_calculated_test.cpu().numpy()) if isinstance(accuracy_calculated_test, torch.Tensor) else accuracy_calculated_test
+            }
+
+            # Add geographical info if available
+            if station in station_coords:
+                result_entry['Lat_DD'] = station_coords[station][0]
+                result_entry['Long_DD'] = station_coords[station][1]
+
+            predictions.append(result_entry)
                 
-                latest_scaled = scaler.transform(latest_data_copy)
-                X_test = torch.tensor(latest_scaled, dtype=torch.float32).to(device)
-                
-                # Make prediction
-                with torch.inference_mode():
-                    prediction = model(X_test).item()
-                    
-                    # Calculate model accuracy for this station
-                    test_preds = model(X_tensor)
-                    
-                    # Calculate accuracy
-                    mse_metric = MeanSquaredError().to(device)
-                    test_mse = mse_metric(test_preds, y_tensor)
-                    accuracy_calculated_test = 100 * (1 - min(test_mse / max_expected_mse, 1.0))
-                    
-                    prediction = max(0, prediction)  
-                    prediction = round(prediction, 1)  
-                
-                if station == stations[0]:
-                    print(f"Final test accuracy for {station}: {accuracy_calculated_test:.2f}%")
-                
-                # Create result entry
-                result_entry = {
-                    'Station': station,
-                    'Year': predict_for_year,
-                    'Predicted_P90': prediction,
-                    'Model_Accuracy': float(accuracy_calculated_test.cpu().numpy()) if isinstance(accuracy_calculated_test, torch.Tensor) else accuracy_calculated_test
-                }
-                
-                # Add geographical info if available
-                if station in station_coords:
-                    result_entry['Lat_DD'] = station_coords[station][0]
-                    result_entry['Long_DD'] = station_coords[station][1]
-                
-                predictions.append(result_entry)
-                
-                # Save intermediate results
-                if len(predictions) % 50 == 0:
-                    temp_df = pd.DataFrame(predictions)
-                    temp_df.to_csv('p90_predictions_temp.csv', index=False)
+            # Save intermediate results
+            if len(predictions) % 50 == 0:
+                temp_df = pd.DataFrame(predictions)
+                temp_df.to_csv('p90_predictions_temp.csv', index=False)
         
         except Exception as e:
             error_stations.append(f"{station}: {str(e)}")
