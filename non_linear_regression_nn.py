@@ -13,7 +13,7 @@ from tqdm.auto import tqdm
 from torchmetrics import MeanSquaredError
 
 
-
+# device agnostic code
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
@@ -23,18 +23,57 @@ print(f"Using device: {device}")
 #### FUNCTIONS ####
 ###################
 
-def process_data(data, train_up_to_year):
+def process_data(train_up_to_year):
     """
     Process data and prepare for training and testing
-
     Args:
-        data: Input data
         train_up_to_year: Year up to which to use data for training
     
     Returns:
         Tuple of train data, stations, and station coordinates
-
     """
+    # file paths
+    file_list = [
+        './data/2013_P90_Scores.csv', 
+        './data/2014_P90_Scores.csv', 
+        './data/2015_P90_Scores.csv', 
+        './data/2016_P90_Scores.csv', 
+        './data/2017_P90_Scores.csv', 
+        './data/2018_P90_Scores.csv', 
+        './data/2019_P90_Scores.csv', 
+        './data/2020_P90_Scores.csv', 
+        './data/2021_P90_Scores.csv', 
+        './data/2022_P90_Scores.csv'
+    ]
+
+    # columns to drop
+    drop_columns = ['X', 'Y', 'x', 'y', 'GlobalID', 'OBJECTID', 'Class', 'Appd_Std', 
+                    'Restr_Std', 'Min_Date', 'Grow_Area']
+
+    # load and combine all datasets
+    dataframes = []
+    for file in file_list:
+        try:
+            year = int(file.split('_')[0].split('/')[-1])
+            df = pd.read_csv(file)
+            
+            # replace any infinite values with NaN
+            df = df.replace([np.inf, -np.inf], np.nan)
+            
+            # add year column
+            df['Year'] = year
+            dataframes.append(df)
+        except Exception as e:
+            print(f"Could not load {file}: {e}")
+
+    # combine all data
+    data = pd.concat(dataframes, ignore_index=True)
+
+    # fill NaN values for specific columns
+    numeric_cols = ['GM', 'SDV', 'MAX_', 'Count_', 'MFCount', 'P90']
+    for col in numeric_cols:
+        if col in data.columns:
+            data[col] = data[col].fillna(data[col].median())
     
     # drop unnecessary columns keeping geographical data
     data_columns = data.columns.tolist()
@@ -334,13 +373,12 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     return results_df
 
 
-
 ###################
 ###### MODEL ######
 ###################
 
 class StationP90Model(nn.Module):
-    
+
     def __init__(self, input_size):
         super().__init__()
         self.network = nn.Sequential(
@@ -360,62 +398,10 @@ class StationP90Model(nn.Module):
     
 
 
-###################
-####### DATA ######
-###################
-
-# file paths
-file_list = [
-    './data/2013_P90_Scores.csv', 
-    './data/2014_P90_Scores.csv', 
-    './data/2015_P90_Scores.csv', 
-    './data/2016_P90_Scores.csv', 
-    './data/2017_P90_Scores.csv', 
-    './data/2018_P90_Scores.csv', 
-    './data/2019_P90_Scores.csv', 
-    './data/2020_P90_Scores.csv', 
-    './data/2021_P90_Scores.csv', 
-    './data/2022_P90_Scores.csv'
-]
-
-# columns to keep 
-geo_columns = ['Lat_DD', 'Long_DD']
-
-# columns to drop
-drop_columns = ['X', 'Y', 'x', 'y', 'GlobalID', 'OBJECTID', 'Class', 'Appd_Std', 
-                'Restr_Std', 'Min_Date', 'Grow_Area']
-
-# load and combine all datasets
-dataframes = []
-for file in file_list:
-    try:
-        year = int(file.split('_')[0].split('/')[-1])
-        df = pd.read_csv(file)
-        
-        # replace any infinite values with NaN
-        df = df.replace([np.inf, -np.inf], np.nan)
-        
-        # add year column
-        df['Year'] = year
-        dataframes.append(df)
-    except Exception as e:
-        print(f"Could not load {file}: {e}")
-
-# combine all data
-all_data = pd.concat(dataframes, ignore_index=True)
-
-# fill NaN values for specific columns
-numeric_cols = ['GM', 'SDV', 'MAX_', 'Count_', 'MFCount', 'P90']
-for col in numeric_cols:
-    if col in all_data.columns:
-        all_data[col] = all_data[col].fillna(all_data[col].median())
-
-
 
 ###################
 ###### MAIN #######
 ###################
-
 
 if __name__ == "__main__":
 
@@ -425,8 +411,7 @@ if __name__ == "__main__":
     print(f"\n=== Predicting P90 values using data through given year ===")
     
     # process data
-    train_data, stations, station_coords = process_data(all_data, 
-                                                        train_up_to_year=2019)
+    train_data, stations, station_coords = process_data(train_up_to_year=2019)
     
     # train models and make predictions
     results = train_and_predict(train_data, 
