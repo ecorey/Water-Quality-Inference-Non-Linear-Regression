@@ -591,14 +591,14 @@ if __name__ == "__main__":
     print(f"\n=== Predicting P90 and GM values using data through given year ===")
     
     # process data
-    train_data, stations, station_coords = process_data(train_up_to_year=2023)
+    train_data, stations, station_coords = process_data(train_up_to_year=2014)
     
     # train models and make predictions
     results = train_and_predict(train_data, 
                                 stations, 
                                 station_coords, 
-                                train_up_to_year=2023, 
-                                predict_for_year=2024)
+                                train_up_to_year=2014, 
+                                predict_for_year=2015)
     
     # overall time
     elapsed_time = time.time() - start_time

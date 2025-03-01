@@ -24,9 +24,9 @@ import pandas as pd
 # path to the geodatabase
 project_gdb = r"C:\Users\bengs\OneDrive\Documents\ArcGIS\Projects\P90\P90.gdb"  
 # path to the nn prediction .csv file after nn is run
-nn_inference_file = r"C:\Users\bengs\Downloads\P90\p90_predictions_2023_using_data_through_2022.csv" 
+nn_inference_file = r"C:\Users\bengs\Downloads\P90\p90_gm_predictions_2015_using_data_through_2014.csv" 
 # created point feature class for actual values
-actual_p90_points_fc = os.path.join(project_gdb, "c2023_P90_Scores_XYTableToPoint")   
+actual_p90_points_fc = os.path.join(project_gdb, "c2015_P90_Scores_XYTableToPoint")   
 # created point feature class for inferred values
 inferred_p90_points_fc = "P90_Prediction_Points_From_CSV"     
 # created spatial join layer for the inferred values and the actual values           
@@ -120,7 +120,7 @@ arcpy.management.CalculateField(spatial_join_output,
 print("Selecting the stations that are considered inaccurate...")
 
 # query stations that are considered inaccurate
-query = f"({p90_diff_field_name} > 13.9 OR {p90_diff_field_name} < -13.9) AND Model_Accuracy IS NOT NULL"
+query = f"({p90_diff_field_name} > 13.9 OR {p90_diff_field_name} < -13.9) AND P90_Model_Accuracy IS NOT NULL"
 
 # select and create a new feature class with the selected stations
 arcpy.analysis.Select(spatial_join_output, innacurate_stations_point_fc, query)
