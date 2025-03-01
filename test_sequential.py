@@ -6,8 +6,11 @@ import torch
 from torch import nn
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import StandardScaler
 import time
+from tqdm.auto import tqdm
+from torchmetrics import MeanSquaredError
+
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -59,27 +62,6 @@ def process_data(data, train_up_to_year):
     
     return train_data, stations, station_coords
 
-def accuracy_fn(y_true, y_pred, threshold=5.0):
-    """
-    Calculate accuracy for regression by counting predictions within threshold.
-    
-    Args:
-        y_true: True values tensor
-        y_pred: Predicted values tensor
-        threshold: Maximum allowed difference to consider prediction correct
-    
-    Returns:
-        Accuracy percentage
-    """
-    # calculate absolute difference
-    abs_diff = torch.abs(y_true - y_pred)
-    
-    # count predictions within a threshold
-    correct = (abs_diff <= threshold).sum().item()
-    
-    # calculate accuracy as a percentage
-    acc = (correct / len(y_pred)) * 100
-    return acc
 
 def train_and_predict(train_data, stations, station_coords, train_up_to_year, predict_for_year, 
                       feature_cols=['GM', 'SDV', 'MAX_', 'Count_', 'MFCount', 'Year']):
@@ -98,24 +80,8 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     Returns:
         DataFrame with predictions
     """
-    import signal
-    from tqdm.auto import tqdm
-    from contextlib import contextmanager
     
-    # Define a timeout handler
-    class TimeoutException(Exception): pass
-    
-    @contextmanager
-    def time_limit(seconds):
-        def signal_handler(signum, frame):
-            raise TimeoutException("Timed out!")
-        signal.signal(signal.SIGALRM, signal_handler)
-        signal.alarm(seconds)
-        try:
-            yield
-        finally:
-            signal.alarm(0)
-    
+   
     # Set the random seed for reproducibility
     torch.manual_seed(42)
     
@@ -125,119 +91,82 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     error_stations = []
     timeout_stations = []
     skipped_stations = []
-    
+
+    total_stations = len(stations)
+
     
     
     # Progress tracking
     station_iterator = tqdm(stations, desc="Processing stations", total=len(stations))
 
-    total_stations = len(stations)
-    
+
     for station in station_iterator:
 
-        
         try:
-            # Use a timeout of 60 seconds per station
-            with time_limit(60):
-                # Get data for this station
-                station_data = train_data[train_data['Station'] == station].sort_values('Year')
+
+            # Get data for this station
+            station_data = train_data[train_data['Station'] == station].sort_values('Year')
+            
+
+            # Check if we have data for the train_up_to_year
+            latest_year_data = station_data[station_data['Year'] == train_up_to_year]
+            if len(latest_year_data) == 0:
+                # If we don't have data for the exact year, use the most recent year's data
+                max_year = station_data['Year'].max()
+                latest_year_data = station_data[station_data['Year'] == max_year]
+            
+
+            # Prepare input data
+            X = station_data[feature_cols].values
+            y = station_data['P90'].values
+            
+            # Scale features
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+            
+            # Convert to tensors
+            X_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(device)
+            y_tensor = torch.tensor(y, dtype=torch.float32).view(-1, 1).to(device)
+            
+            # Create the model
+            model = StationP90Model(len(feature_cols)).to(device)
+            criterion = nn.MSELoss()
+            optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+            
+            # Training loop
+            epochs = 50
+            for epoch in range(epochs):
+                # Training
+                model.train()
                 
-                # Handle stations with limited data (fewer than 2 years)
-                if len(station_data) < 2:
-                    # For stations with only one data point, use the last year's data and add a note
-                    if len(station_data) == 1:
-                        limited_data_stations.append(f"{station} (only {len(station_data)} records)")
-                        recent_p90 = station_data['P90'].iloc[0]
-                        prediction = round(max(0, recent_p90), 1)  # Ensure non-negative and round
-                        
-                        result_entry = {
-                            'Station': station,
-                            'Year': predict_for_year,
-                            'Predicted_P90': prediction,
-                            'Model_Accuracy': None,  # Can't measure accuracy with only one point
-                            'Note': 'Insufficient data'
-                        }
-                        
-                        # Add geographical info if available
-                        if station in station_coords:
-                            result_entry['Lat_DD'] = station_coords[station][0]
-                            result_entry['Long_DD'] = station_coords[station][1]
-                        
-                        predictions.append(result_entry)
-                        continue
-                    
-                    # For stations with no data, skip them entirely
-                    elif len(station_data) == 0:
-                        skipped_stations.append(f"{station} (no data)")
-                        continue
+                # Forward pass
+                y_pred = model(X_tensor)
                 
-                # Check for NaN values and handle them
-                if station_data[feature_cols].isna().any().any():
-                    # Fill NaN values in feature columns
-                    station_data_filled = station_data.copy()
-                    for col in feature_cols:
-                        if station_data[col].isna().any():
-                            # If a column has NaN, use the mean of that column for that station
-                            mean_val = station_data[col].mean()
-                            if np.isnan(mean_val):  # If all values are NaN
-                                # Use overall mean from the dataset
-                                mean_val = train_data[col].mean()
-                                if np.isnan(mean_val):  # If still NaN
-                                    mean_val = 0  # Default to 0
-                            station_data_filled[col] = station_data[col].fillna(mean_val)
-                    station_data = station_data_filled
+                # Calculate loss
+                loss = criterion(y_pred, y_tensor)
                 
-                # Check if we have data for the train_up_to_year
-                latest_year_data = station_data[station_data['Year'] == train_up_to_year]
-                if len(latest_year_data) == 0:
-                    # If we don't have data for the exact year, use the most recent year's data
-                    max_year = station_data['Year'].max()
-                    latest_year_data = station_data[station_data['Year'] == max_year]
+                # Calculate accuracy
+                mse_metric = MeanSquaredError().to(device)
+                mse_value = mse_metric(y_pred, y_tensor)
                 
-                # Prepare input data
-                X = station_data[feature_cols].values
-                y = station_data['P90'].values
+
+                max_expected_mse = 100.0  # Set this based on your data's scale
+                accuracy_calculated = 100 * (1 - min(mse_value / max_expected_mse, 1.0))
+
+               
                 
-                # Scale features
-                scaler = StandardScaler()
-                X_scaled = scaler.fit_transform(X)
+                # Optimizer zero grad
+                optimizer.zero_grad()
                 
-                # Convert to tensors
-                X_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(device)
-                y_tensor = torch.tensor(y, dtype=torch.float32).view(-1, 1).to(device)
+                # Backpropagation
+                loss.backward()
                 
-                # Create the model
-                model = StationP90Model(len(feature_cols)).to(device)
-                criterion = nn.MSELoss()
-                optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+                # Optimizer step
+                optimizer.step()
                 
-                # Training loop
-                epochs = 50
-                for epoch in range(epochs):
-                    # Training
-                    model.train()
-                    
-                    # Forward pass
-                    y_pred = model(X_tensor)
-                    
-                    # Calculate loss
-                    loss = criterion(y_pred, y_tensor)
-                    
-                    # Calculate accuracy (within 5 units)
-                    accuracy = accuracy_fn(y_true=y_tensor, y_pred=y_pred, threshold=5.0)
-                    
-                    # Optimizer zero grad
-                    optimizer.zero_grad()
-                    
-                    # Backpropagation
-                    loss.backward()
-                    
-                    # Optimizer step
-                    optimizer.step()
-                    
-                    # Print progress every 10 epochs for first station only
-                    if epoch % 10 == 0 and station == stations[0]:
-                        print(f"Station {station}, Epoch {epoch}/{epochs}, Loss: {loss.item():.4f}, Accuracy: {accuracy:.2f}%")
+                # Print progress every 10 epochs for first station only
+                if epoch % 10 == 0 and station == stations[0]:
+                    print(f"Station {station}, Epoch {epoch}/{epochs}, Loss: {loss.item():.4f}, Accuracy: {accuracy_calculated:.2f}%")
                 
                 # Testing/Prediction
                 model.eval()
@@ -254,26 +183,33 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 latest_scaled = scaler.transform(latest_data_copy)
                 X_test = torch.tensor(latest_scaled, dtype=torch.float32).to(device)
                 
+
+
                 # Make prediction
                 with torch.inference_mode():
                     prediction = model(X_test).item()
                     
                     # Calculate model accuracy for this station
                     test_preds = model(X_tensor)
-                    station_accuracy = accuracy_fn(y_true=y_tensor, y_pred=test_preds, threshold=5.0)
                     
-                    prediction = max(0, prediction)  # Ensure non-negative
-                    prediction = round(prediction, 1)  # Round to 1 decimal place
+                    # Calculate accuracy
+                    mse_metric = MeanSquaredError().to(device)
+                    test_mse = mse_metric(test_preds, y_tensor)
+                    accuracy_calculated_test = 100 * (1 - min(test_mse / max_expected_mse, 1.0))
+                    
+                    prediction = max(0, prediction)  
+                    prediction = round(prediction, 1)  
                 
                 if station == stations[0]:
-                    print(f"Final test accuracy for {station}: {station_accuracy:.2f}%")
+                    print(f"Final test accuracy for {station}: {accuracy_calculated_test:.2f}%")
                 
                 # Create result entry
                 result_entry = {
                     'Station': station,
                     'Year': predict_for_year,
                     'Predicted_P90': prediction,
-                    'Model_Accuracy': round(station_accuracy, 2)  # Add station-specific accuracy
+                    'Model_Accuracy': float(accuracy_calculated_test.cpu().numpy()) if isinstance(accuracy_calculated_test, torch.Tensor) else accuracy_calculated_test
+ 
                 }
                 
                 # Add geographical info if available
@@ -288,9 +224,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                     temp_df = pd.DataFrame(predictions)
                     temp_df.to_csv('p90_predictions_temp.csv', index=False)
                 
-        except TimeoutException:
-            timeout_stations.append(station)
-            print(f"Timeout processing station {station}")
+      
             
             
         except Exception as e:
