@@ -19,14 +19,20 @@ print(f"Using device: {device}")
 #### FUNCTIONS ####
 ###################
 
-def process_data(data, train_up_to_year, predict_for_year, feature_cols=['GM', 'SDV', 'MAX_', 'Count_', 'MFCount', 'Year']):
+def process_data(data, train_up_to_year):
     """
     Process data and prepare for training and testing
-    """
-    # Create a copy of the data with the geo columns preserved
-    geo_data = data.copy()
+
+    Args:
+        data: Input data
+        train_up_to_year: Year up to which to use data for training
     
-    # Drop unnecessary columns, but keep geographical data
+    Returns:
+        Tuple of train data, stations, and station coordinates
+
+    """
+    
+    # drop unnecessary columns keeping geographical data
     data_columns = data.columns.tolist()
     columns_to_drop = [col for col in drop_columns if col in data_columns]
     data = data.drop(columns=columns_to_drop)
@@ -34,10 +40,10 @@ def process_data(data, train_up_to_year, predict_for_year, feature_cols=['GM', '
     # Replace inf values with NaN
     data = data.replace([np.inf, -np.inf], np.nan)
     
-    # Filter data for training and testing
+    # filter data for training and testing
     train_data = data[data['Year'] <= train_up_to_year]
     
-    # Create a lookup for geographical information
+    # create a lookup for geographical information
     station_coords = {}
     for _, row in data.iterrows():
         station = row['Station']
@@ -47,7 +53,7 @@ def process_data(data, train_up_to_year, predict_for_year, feature_cols=['GM', '
             if pd.notna(lat) and pd.notna(lon):
                 station_coords[station] = (lat, lon)
     
-    # Get unique stations
+    # get stations
     stations = train_data['Station'].unique()
     print(f"Processing {len(stations)} stations")
     
@@ -65,13 +71,13 @@ def accuracy_fn(y_true, y_pred, threshold=5.0):
     Returns:
         Accuracy percentage
     """
-    # Calculate absolute difference
+    # calculate absolute difference
     abs_diff = torch.abs(y_true - y_pred)
     
-    # Count predictions within threshold
+    # count predictions within a threshold
     correct = (abs_diff <= threshold).sum().item()
     
-    # Calculate accuracy as percentage
+    # calculate accuracy as a percentage
     acc = (correct / len(y_pred)) * 100
     return acc
 
@@ -80,9 +86,20 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     """
     Train models and make predictions with separate training and testing loops.
     Handles stations with limited data using fallback methods.
+
+    Args:
+        train_data: Data for training
+        stations: List of stations
+        station_coords: Dictionary of station coordinates
+        train_up_to_year: Year up to which to use data for training
+        predict_for_year: Year for which to make predictions
+        feature_cols: List of feature columns to use for training
+
+    Returns:
+        DataFrame with predictions
     """
-    from sklearn.linear_model import LinearRegression
     import signal
+    from tqdm.auto import tqdm
     from contextlib import contextmanager
     
     # Define a timeout handler
@@ -109,22 +126,15 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     timeout_stations = []
     skipped_stations = []
     
-    # Default prediction fallback for stations with insufficient data
-    overall_mean_p90 = train_data['P90'].mean()
+    
     
     # Progress tracking
+    station_iterator = tqdm(stations, desc="Processing stations", total=len(stations))
+
     total_stations = len(stations)
-    processed_count = 0
-    last_progress_update = time.time()
     
-    for station in stations:
-        processed_count += 1
-        
-        # Print progress every 50 stations or 30 seconds
-        current_time = time.time()
-        if processed_count % 50 == 0 or current_time - last_progress_update > 30:
-            print(f"Progress: {processed_count}/{total_stations} stations ({processed_count/total_stations*100:.1f}%)")
-            last_progress_update = current_time
+    for station in station_iterator:
+
         
         try:
             # Use a timeout of 60 seconds per station
@@ -282,58 +292,11 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
             timeout_stations.append(station)
             print(f"Timeout processing station {station}")
             
-            # Use fallback prediction for timeout stations
-            if station_data is not None and len(station_data) > 0:
-                recent_p90 = station_data['P90'].mean()
-            else:
-                recent_p90 = overall_mean_p90
-                
-            prediction = round(max(0, recent_p90), 1)
-            
-            result_entry = {
-                'Station': station,
-                'Year': predict_for_year,
-                'Predicted_P90': prediction,
-                'Model_Accuracy': None,  # No accuracy for timeout stations
-                'Note': 'Timeout, using fallback value'
-            }
-            
-            # Add geographical info if available
-            if station in station_coords:
-                result_entry['Lat_DD'] = station_coords[station][0]
-                result_entry['Long_DD'] = station_coords[station][1]
-            
-            predictions.append(result_entry)
             
         except Exception as e:
             error_stations.append(f"{station}: {str(e)}")
             print(f"Error processing station {station}: {e}")
             
-            # Use fallback prediction for error stations
-            try:
-                if 'station_data' in locals() and station_data is not None and len(station_data) > 0:
-                    recent_p90 = station_data['P90'].mean()
-                else:
-                    recent_p90 = overall_mean_p90
-                    
-                prediction = round(max(0, recent_p90), 1)
-                
-                result_entry = {
-                    'Station': station,
-                    'Year': predict_for_year,
-                    'Predicted_P90': prediction,
-                    'Model_Accuracy': None,  # No accuracy for error stations
-                    'Note': 'Error, using fallback value'
-                }
-                
-                # Add geographical info if available
-                if station in station_coords:
-                    result_entry['Lat_DD'] = station_coords[station][0]
-                    result_entry['Long_DD'] = station_coords[station][1]
-                
-                predictions.append(result_entry)
-            except:
-                print(f"Could not create fallback prediction for station {station}")
     
     # Create result DataFrame
     results_df = pd.DataFrame(predictions)
@@ -369,11 +332,15 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     
     if overall_accuracy is not None:
         print(f"\nOverall model accuracy (across all stations): {overall_accuracy:.2f}%")
+
+
     
     # Save to CSV
     output_file = f'p90_predictions_{predict_for_year}_using_data_through_{train_up_to_year}.csv'
     results_df.to_csv(output_file, index=False)
     print(f"\nSaved {len(results_df)} predictions to {output_file}")
+
+
     
     return results_df
 
@@ -462,8 +429,7 @@ if __name__ == "__main__":
     
     # process data
     train_data, stations, station_coords = process_data(all_data, 
-                                                        train_up_to_year=2019, 
-                                                        predict_for_year=2020)
+                                                        train_up_to_year=2019)
     
     # train models and make predictions
     results = train_and_predict(train_data, 
