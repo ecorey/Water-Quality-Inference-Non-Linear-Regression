@@ -334,6 +334,8 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     
     return results_df
 
+
+
 ###################
 ###### MODEL ######
 ###################
