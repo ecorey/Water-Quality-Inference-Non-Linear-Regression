@@ -1,5 +1,6 @@
 """
 This script is used to test the sequential model for predicting P90 scores for a given year using data through the given year.
+The model uses a non-linear regression neural network to infer the results.
 """
 
 import torch
@@ -80,10 +81,10 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
         DataFrame with predictions
     """
     
-    # Set the random seed for reproducibility
+    # set the random seed for reproducibility
     torch.manual_seed(42)
     
-    # Prepare results
+    # list vars
     predictions = []
     limited_data_stations = []
     error_stations = []
@@ -92,54 +93,54 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
 
     total_stations = len(stations)
     
-    # Progress tracking
+    # tqdm progress bar
     station_iterator = tqdm(stations, desc="Processing stations", total=len(stations))
 
     for station in station_iterator:
         try:
-            # Get data for this station
+            # get data for this station
             station_data = train_data[train_data['Station'] == station].sort_values('Year')
 
-            # Prepare input data
+            # prepare data
             X = station_data[feature_cols].values
             y = station_data['P90'].values
 
-            # Create polynomial features (squared terms)
-            numeric_features = ['GM', 'SDV', 'MAX_']  # Define which features to square
+            # create polynomial features (squared values)
+            numeric_features = ['GM', 'SDV', 'MAX_']  
             X_enhanced = X.copy()
-            feature_names = feature_cols.copy()  # Keep track of feature names
+            feature_names = feature_cols.copy()  
 
-            # Add squared terms for numeric features
+            # add squared values 
             for feature in numeric_features:
                 if feature in feature_cols:
                     i = feature_cols.index(feature)
-                    # Create the squared term
+                    # create the squared values
                     squared_values = X[:, i] ** 2
-                    # Add it to the enhanced matrix
+                    # add values to the enhanced matrix
                     X_enhanced = np.hstack((X_enhanced, squared_values.reshape(-1, 1)))
-                    # Track the new feature name
+                    # append the feature names
                     feature_names.append(f"{feature}_squared")
             
-            # Check if we have data for the train_up_to_year
+            # check if we have data for the train_up_to_year
             latest_year_data = station_data[station_data['Year'] == train_up_to_year]
             if len(latest_year_data) == 0:
-                # If we don't have data for the exact year, use the most recent year's data
+                # if there is no data for the exact year, use the most recent year's data
                 max_year = station_data['Year'].max()
                 latest_year_data = station_data[station_data['Year'] == max_year]
             
            
             
-            # Scale features
+            # scale features
             scaler = StandardScaler()
             X_scaled = scaler.fit_transform(X_enhanced)
             
-            # Convert to tensors
+            # convert to tensors
             X_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(device)
             y_tensor = torch.tensor(y, dtype=torch.float32).view(-1, 1).to(device)
             
-            # Check if we have enough data for BatchNorm (need at least 2 samples)
+            # check if there is enough data for BatchNorm (need at least 2 samples)
             if len(station_data) < 2:
-                # Use a simpler model without BatchNorm for stations with minimal data
+                # use a simpler model without BatchNorm for stations that have less than 2 samples
                 class SimpleModel(nn.Module):
                     def __init__(self, input_size):
                         super().__init__()
@@ -154,7 +155,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 model = SimpleModel(X_enhanced.shape[1]).to(device)
                 limited_data_stations.append(f"{station}: Only {len(station_data)} records, using simple model") 
             else:
-                # Use the regular model with BatchNorm for stations with sufficient data
+                # use the standard model with BatchNorm for stations with more than 2 samples
                 model = StationP90Model(X_enhanced.shape[1]).to(device)
             
             criterion = nn.MSELoss()
@@ -162,102 +163,100 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
 
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=15, factor=0.5, verbose=False)
 
-            # Initialize early stopping variables
+            # early stopping variables
             best_loss = float('inf')
             best_model_state = None
-            patience = 10  # Number of epochs to wait before stopping if no improvement
+            # epochs to wait before stopping if no improvement
+            patience = 10  
             patience_counter = 0
 
 
-            # Training loop with early stopping
+            # training loop
             epochs = 50
             best_loss = float('inf')
             best_model_state = None
-            patience = 15  # Increased patience
+            patience = 15  
             patience_counter = 0
 
             for epoch in range(epochs):
-                # Training
+                # training
                 model.train()
                 
-                # Forward pass
+                # forward pass
                 y_pred = model(X_tensor)
                 
-                # Calculate loss
+                # calculate loss
                 loss = criterion(y_pred, y_tensor)
                 
-                # Calculate accuracy (just for monitoring)
+                # calculate accuracy (for monitoring)
                 mse_metric = MeanSquaredError().to(device)
                 mse_value = mse_metric(y_pred, y_tensor)
                 max_expected_mse = 100.0  
                 accuracy_calculated = 100 * (1 - min(mse_value / max_expected_mse, 1.0))
                 
-                # Optimizer zero grad
+                # optimizer zero grad
                 optimizer.zero_grad()
                 
-                # Backpropagation
+                # backpropagation
                 loss.backward()
                 
-                # Optimizer step
+                # optimizer step
                 optimizer.step()
                 
-                # Update learning rate
+                # update learning rate
                 scheduler.step(loss)
                 
-                # Early stopping logic
+                # early stopping logic
                 if loss.item() < best_loss:
                     best_loss = loss.item()
-                    best_model_state = model.state_dict().copy()  # Save the model state
-                    patience_counter = 0  # Reset counter
+                    best_model_state = model.state_dict().copy()  
+                    patience_counter = 0  
                 else:
-                    patience_counter += 1  # Increment counter
+                    patience_counter += 1  
                 
-                # If no improvement for 'patience' epochs, stop training
+                # if there are no improvement for 'patience' in alotted epochs, stop training
                 if patience_counter >= patience:
                     if station == stations[0]:
                         print(f"Early stopping for station {station} at epoch {epoch}")
                     break
                 
-                # Print progress every 10 epochs for first station only
-                if epoch % 10 == 0 and station == stations[0]:
-                    print(f"Station {station}, Epoch {epoch}/{epochs}, Loss: {loss.item():.4f}, Accuracy: {accuracy_calculated:.2f}%")
-
-            # After training completes, load the best model for prediction
+                
+            # after training, load the best model for prediction
             model.eval()
             if best_model_state is not None:
                 model.load_state_dict(best_model_state)
 
-            # Get latest data for prediction (from the most recent year available)
+            # get latest data for prediction (from the most recent year available)
             latest_data = latest_year_data.iloc[0][feature_cols].values.reshape(1, -1)
             latest_data_copy = latest_data.copy()             
 
-            # Modify the Year value to be the prediction year
+            # modify the Year value to be the prediction year
             year_index = feature_cols.index('Year') if 'Year' in feature_cols else None
             if year_index is not None:
                 latest_data_copy[0, year_index] = predict_for_year
 
-            # Add squared terms to the prediction data
+            # add the squared values to the prediction data
             latest_data_enhanced = latest_data_copy.copy()
             for feature in numeric_features:
                 if feature in feature_cols:
                     i = feature_cols.index(feature)
-                    # Create squared term
+                    # create squared values
                     squared_value = latest_data_copy[0, i] ** 2
-                    # Add to enhanced features
+                    # add to enhanced features
                     latest_data_enhanced = np.hstack((latest_data_enhanced, np.array([[squared_value]])))
 
-            # Scale with the same scaler used for training
+            # scale with the same scaler used in training
             latest_scaled = scaler.transform(latest_data_enhanced)
             X_test = torch.tensor(latest_scaled, dtype=torch.float32).to(device)
 
-            # Make prediction
+            # make prediction
             with torch.inference_mode():
                 prediction = model(X_test).item()
                 
-                # Calculate model accuracy for this station
+                # forwards pass
                 test_preds = model(X_tensor)
                 
-                # Calculate accuracy
+                # calculate accuracy
                 mse_metric = MeanSquaredError().to(device)
                 test_mse = mse_metric(test_preds, y_tensor)
                 accuracy_calculated_test = 100 * (1 - min(test_mse / max_expected_mse, 1.0))
@@ -268,7 +267,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
             if station == stations[0]:
                 print(f"Final test accuracy for {station}: {accuracy_calculated_test:.2f}%")
 
-            # Create result entry
+            # create the result entry
             result_entry = {
                 'Station': station,
                 'Year': predict_for_year,
@@ -276,14 +275,14 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 'Model_Accuracy': float(accuracy_calculated_test.cpu().numpy()) if isinstance(accuracy_calculated_test, torch.Tensor) else accuracy_calculated_test
             }
 
-            # Add geographical info if available
+            # add geographical info if available
             if station in station_coords:
                 result_entry['Lat_DD'] = station_coords[station][0]
                 result_entry['Long_DD'] = station_coords[station][1]
 
             predictions.append(result_entry)
                 
-            # Save intermediate results
+            # save the results as a temporary file every 50 stations
             if len(predictions) % 50 == 0:
                 temp_df = pd.DataFrame(predictions)
                 temp_df.to_csv('p90_predictions_temp.csv', index=False)
@@ -292,14 +291,14 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
             error_stations.append(f"{station}: {str(e)}")
             print(f"Error processing station {station}: {e}")
     
-    # Create result DataFrame
+    # create the result DataFrame
     results_df = pd.DataFrame(predictions)
     
-    # Calculate overall accuracy
+    # calculate the overall model accuracy
     valid_accuracies = results_df['Model_Accuracy'].dropna()
     overall_accuracy = valid_accuracies.mean() if len(valid_accuracies) > 0 else None
     
-    # Print summary statistics
+    # print summary 
     print("\n===== SUMMARY =====")
     print(f"Total stations processed: {total_stations}")
     print(f"Successful predictions with neural network: {total_stations - len(limited_data_stations) - len(error_stations) - len(timeout_stations) - len(skipped_stations)}")
@@ -308,7 +307,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     print(f"Stations with timeouts: {len(timeout_stations)}")
     print(f"Stations skipped (no data): {len(skipped_stations)}")
     
-    # Print examples of stations with issues
+    # print examples of stations with issues
     if limited_data_stations:
         print(f"\nExample stations with limited data (showing {min(5, len(limited_data_stations))} of {len(limited_data_stations)}):")
         for station_info in limited_data_stations[:5]:
@@ -327,7 +326,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
     if overall_accuracy is not None:
         print(f"\nOverall model accuracy (across all stations): {overall_accuracy:.2f}%")
     
-    # Save to CSV
+    # save the data to a .csv file
     output_file = f'p90_predictions_{predict_for_year}_using_data_through_{train_up_to_year}.csv'
     results_df.to_csv(output_file, index=False)
     print(f"\nSaved {len(results_df)} predictions to {output_file}")
@@ -341,6 +340,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
 ###################
 
 class StationP90Model(nn.Module):
+    
     def __init__(self, input_size):
         super().__init__()
         self.network = nn.Sequential(
@@ -354,6 +354,7 @@ class StationP90Model(nn.Module):
             nn.Dropout(0.1),
             nn.Linear(16, 1)
         )
+
     def forward(self, x):
         return self.network(x)
     
