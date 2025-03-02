@@ -334,7 +334,7 @@ def train_and_predict(train_data, stations, station_coords, train_up_to_year, pr
                 
                 # check if there is enough data for BatchNorm (need at least 2 samples)
                 if len(station_data) < 2:
-                    # use a simpler model without BatchNorm for stations that have less than 2 samples
+                    # use a simpler model without the BatchNorm for stations that have less than 2 samples
                     class SimpleModel(nn.Module):
                         def __init__(self, input_size):
                             super().__init__()
