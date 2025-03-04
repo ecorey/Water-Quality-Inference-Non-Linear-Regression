@@ -56,14 +56,12 @@ plt.figure(figsize=(12, 8))
 # x-axis range
 x_min, x_max = 2013, 2023
 
-# GM standards: approved ≤ 14, restricted ≤ 88, prohibited > 88
-# add background colors with 75% opacity (alpha=0.75)
 # approved
-plt.axhspan(0, 14, facecolor='green', alpha=0.75, zorder=0) 
+plt.axhspan(0, 14, facecolor='green', alpha=0.45, zorder=0) 
 # restricted 
-plt.axhspan(14, 88, facecolor='orange', alpha=0.75, zorder=0)  
+plt.axhspan(14, 88, facecolor='orange', alpha=0.45, zorder=0)  
 # prohibited
-plt.axhspan(88, plt.ylim()[1] * 2, facecolor='red', alpha=0.75, zorder=0)  
+plt.axhspan(88, plt.ylim()[1] * 2, facecolor='red', alpha=0.45, zorder=0)  
 
 # add horizontal lines at the threshold boundaries
 plt.axhline(y=14, color='black', linestyle='--', alpha=0.5, zorder=1)
@@ -94,10 +92,6 @@ plt.title('GM Values for 5 Stations (2013-2023)', fontsize=16)
 plt.grid(True, linestyle='--', alpha=0.7)
 plt.legend(title='Station ID')
 
-# add a threshold legend
-plt.text(2013.5, 7, 'Approved (≤14)', fontsize=10, bbox=dict(facecolor='green', alpha=0.75))
-plt.text(2013.5, 51, 'Restricted (≤88)', fontsize=10, bbox=dict(facecolor='orange', alpha=0.75))
-plt.text(2013.5, 100, 'Prohibited (>88)', fontsize=10, bbox=dict(facecolor='red', alpha=0.75))
 
 # adjust the x-axis to show all years
 plt.xticks(range(2013, 2023))

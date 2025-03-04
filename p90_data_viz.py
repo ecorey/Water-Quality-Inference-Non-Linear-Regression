@@ -56,14 +56,12 @@ plt.figure(figsize=(12, 8))
 # x-axis range
 x_min, x_max = 2013, 2023
 
-# P90 standards: approved ≤ 31, restricted ≤ 163, prohibited > 163
-# add background colors with 75% opacity (alpha=0.75)
 # approved
-plt.axhspan(0, 31, facecolor='green', alpha=0.75, zorder=0) 
+plt.axhspan(0, 31, facecolor='green', alpha=0.45, zorder=0) 
 # restricted 
-plt.axhspan(31, 163, facecolor='orange', alpha=0.75, zorder=0)  
+plt.axhspan(31, 163, facecolor='orange', alpha=0.45, zorder=0)  
 # prohibited
-plt.axhspan(163, plt.ylim()[1] * 2, facecolor='red', alpha=0.75, zorder=0)  
+plt.axhspan(163, plt.ylim()[1] * 2, facecolor='red', alpha=0.45, zorder=0)  
 
 # add horizontal lines at the threshold boundaries
 plt.axhline(y=31, color='black', linestyle='--', alpha=0.5, zorder=1)
@@ -94,10 +92,6 @@ plt.title('P90 Values for 5 Stations (2013-2023)', fontsize=16)
 plt.grid(True, linestyle='--', alpha=0.7)
 plt.legend(title='Station ID')
 
-# add a threshold legend
-plt.text(2013.5, 15, 'Approved (≤31)', fontsize=10, bbox=dict(facecolor='green', alpha=0.75))
-plt.text(2013.5, 97, 'Restricted (≤163)', fontsize=10, bbox=dict(facecolor='orange', alpha=0.75))
-plt.text(2013.5, 200, 'Prohibited (>163)', fontsize=10, bbox=dict(facecolor='red', alpha=0.75))
 
 # adjust the x-axis to show all years
 plt.xticks(range(2013, 2023))
