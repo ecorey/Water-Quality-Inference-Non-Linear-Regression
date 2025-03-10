@@ -1,6 +1,6 @@
 """
 This script is used to test the sequential model for predicting P90 and GM scores for a given year using data through the given year.
-The model uses a non-linear regression neural network to infer the results.
+The model uses a non-linear regression neural network to infer the results. The information can then be used to classify the individual stations.
 """
 
 import torch
